@@ -1,25 +1,58 @@
-version: '3.9'
+
 
 services:
-  backend:
-    build: ./backend
-    volumes:
-      - ./backend:/app
+  # 🔐 Сервис авторизации
+  auth_service:
+    build: ./services/auth_service
+    container_name: auth_service
     ports:
-      - "8000:8000"
+      - "8001:8000"
+    restart: always
 
-  frontend:
-    image: node:18
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-      - ./frontend/dist:/output
-    command: sh -c "npm install && npm run build && cp -r dist/* /output"
+#  # 🎬 Сервис контента (каталог фильмов)
+#  content_service:
+#    build: ./services/content_service
+#    container_name: content_service
+#    ports:
+#      - "8002:8000"
+#    restart: always
 
-  nginx:
+#  # 📦 Сервис заказов
+#  order_service:
+#    build: ./services/order_service
+#    container_name: order_service
+#    ports:
+#      - "8003:8000"
+#    restart: always
+#
+#  # 💳 Платёжный сервис
+#  payment_service:
+#    build: ./services/payment_service
+#    container_name: payment_service
+#    ports:
+#      - "8004:8000"
+#    restart: always
+#
+#  # 🛠️ Админка/модерация
+#  admin_service:
+#    build: ./services/admin_service
+#    container_name: admin_service
+#    ports:
+#      - "8005:8000"
+#    restart: always
+
+  # 🌐 Nginx как gateway
+  gateway:
     image: nginx:alpine
+    container_name: gateway
     volumes:
-      - ./frontend/dist:/usr/share/nginx/html
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf
     ports:
       - "80:80"
+    depends_on:
+      - auth_service
+#      - content_service
+#      - order_service
+#      - payment_service
+#      - admin_service
+
