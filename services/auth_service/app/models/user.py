@@ -12,3 +12,4 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     role = Column(String, default="user")  # user, moderator, admin
     is_blocked = Column(Boolean, default=False)
+    is_verified = Column(Boolean, default=False)

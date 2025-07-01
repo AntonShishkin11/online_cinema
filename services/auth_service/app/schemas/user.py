@@ -15,6 +15,7 @@ class UserRead(BaseModel):
     email: EmailStr
     role: str
     is_blocked: bool
+    is_verified: bool
 
     class Config:
         orm_mode = True
