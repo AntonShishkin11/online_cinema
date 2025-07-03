@@ -1,11 +1,11 @@
 from app.services.email_service import send_verification_email
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Request, APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.database import get_session
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, UserRead
-from app.core.security import get_password_hash, verify_password, create_access_token, create_email_verification_token, verify_email_verification_token
+from app.core.security import get_password_hash, verify_password, create_access_token, verify_refresh_token, create_refresh_token, create_email_verification_token, verify_email_verification_token
 
 router = APIRouter()
 
@@ -36,8 +36,28 @@ async def login(data: UserLogin, session: AsyncSession = Depends(get_session)):
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    token = create_access_token(user.email)
-    return {"access_token": token, "token_type": "bearer"}
+    token = create_access_token, verify_refresh_token, create_refresh_token(user.email)
+    return {
+        "access_token": token,
+        "refresh_token": create_refresh_token(user.email),
+        "token_type": "bearer"
+    }
+    try:
+        email = verify_email_verification_token(token)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.is_verified:
+        return {"message": "Email already verified"}
+
+    user.is_verified = True
+    await session.commit()
+    return {"message": "Email successfully verified"}
+
 
 @router.get("/verify-email")
 async def verify_email(token: str, session: AsyncSession = Depends(get_session)):
@@ -56,3 +76,18 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_session))
     user.is_verified = True
     await session.commit()
     return {"message": "Email successfully verified"}
+
+@router.post("/refresh")
+async def refresh_token(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing refresh token")
+
+    token = auth_header.split(" ")[1]
+    try:
+        email = verify_refresh_token(token)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    new_access_token = create_access_token(email)
+    return {"access_token": new_access_token, "token_type": "bearer"}

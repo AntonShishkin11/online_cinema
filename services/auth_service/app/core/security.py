@@ -30,3 +30,17 @@ def verify_email_verification_token(token: str) -> str:
         return payload.get("sub")
     except JWTError:
         raise ValueError("Invalid or expired token")
+
+def create_refresh_token(email: str) -> str:
+    expire = datetime.utcnow() + timedelta(days=7)
+    to_encode = {"sub": email, "type": "refresh", "exp": expire}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_refresh_token(token: str) -> str:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise ValueError("Invalid token type")
+        return payload.get("sub")
+    except JWTError:
+        raise ValueError("Invalid or expired refresh token")
