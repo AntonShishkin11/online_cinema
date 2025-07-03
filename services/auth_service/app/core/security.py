@@ -44,3 +44,17 @@ def verify_refresh_token(token: str) -> str:
         return payload.get("sub")
     except JWTError:
         raise ValueError("Invalid or expired refresh token")
+
+def create_password_reset_token(email: str) -> str:
+    expire = datetime.utcnow() + timedelta(minutes=30)
+    to_encode = {"sub": email, "type": "reset", "exp": expire}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_password_reset_token(token: str) -> str:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "reset":
+            raise ValueError("Invalid token type")
+        return payload.get("sub")
+    except JWTError:
+        raise ValueError("Invalid or expired token")

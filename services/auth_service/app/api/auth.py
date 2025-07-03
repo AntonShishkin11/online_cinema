@@ -116,3 +116,37 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
         "email": payload.get("sub"),
         "role": payload.get("role", "user")
     }
+
+
+from app.core.security import create_password_reset_token, verify_password_reset_token
+from app.models.user import User
+from app.db.database import get_session
+from fastapi import Form
+from sqlalchemy.future import select
+
+@router.post("/request-password-reset")
+async def request_password_reset(email: str = Form(...), session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    token = create_password_reset_token(email)
+    await send_verification_email(email, token)  # Reuse email function
+    return {"message": "Password reset email sent"}
+
+@router.post("/reset-password")
+async def reset_password(token: str = Form(...), new_password: str = Form(...), session: AsyncSession = Depends(get_session)):
+    try:
+        email = verify_password_reset_token(token)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = get_password_hash(new_password)
+    await session.commit()
+    return {"message": "Password has been reset successfully"}
