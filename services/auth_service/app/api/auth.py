@@ -3,11 +3,15 @@ from fastapi import Request, APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.database import get_session
+from jose import jwt, JWTError
+from app.core.config import SECRET_KEY, ALGORITHM
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, UserRead
-from app.core.security import get_password_hash, verify_password, create_access_token, verify_refresh_token, create_refresh_token, create_email_verification_token, verify_email_verification_token
+from app.core.security import get_password_hash, verify_password, create_access_token, verify_refresh_token, \
+    create_refresh_token, create_email_verification_token, verify_email_verification_token
 
 router = APIRouter()
+
 
 @router.post("/register", response_model=UserRead)
 async def register(user: UserCreate, session: AsyncSession = Depends(get_session)):
@@ -27,6 +31,7 @@ async def register(user: UserCreate, session: AsyncSession = Depends(get_session
     await session.refresh(new_user)
     return new_user
 
+
 @router.post("/login")
 async def login(data: UserLogin, session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(User).where(User.email == data.email))
@@ -36,10 +41,12 @@ async def login(data: UserLogin, session: AsyncSession = Depends(get_session)):
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    token = create_access_token, verify_refresh_token, create_refresh_token(user.email)
+    access_token = create_access_token(user.email, user.role)
+    refresh_token = create_refresh_token(user.email)
+
     return {
-        "access_token": token,
-        "refresh_token": create_refresh_token(user.email),
+        "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer"
     }
     try:
@@ -77,6 +84,7 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_session))
     await session.commit()
     return {"message": "Email successfully verified"}
 
+
 @router.post("/refresh")
 async def refresh_token(request: Request):
     auth_header = request.headers.get("Authorization")
@@ -91,3 +99,20 @@ async def refresh_token(request: Request):
 
     new_access_token = create_access_token(email)
     return {"access_token": new_access_token, "token_type": "bearer"}
+
+
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+security = HTTPBearer()
+
+@router.get("/me")
+def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return {
+        "email": payload.get("sub"),
+        "role": payload.get("role", "user")
+    }
