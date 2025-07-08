@@ -1,2 +1,7 @@
 fastapi
 uvicorn
+sqlalchemy[asyncio]
+asyncpg
+alembic
+psycopg2-binary
+dotenv

@@ -1,6 +1,21 @@
 version: '3.9'
 
 services:
+
+# 🐘 PostgreSQL для admin_service
+  db_admin:
+    image: postgres:15
+    container_name: db_admin
+    restart: always
+    ports:
+      - "${POSTGRES_PORT_ADMIN_SERVICE}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER_ADMIN_SERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_ADMIN_SERVICE}
+      POSTGRES_DB: ${POSTGRES_DB_ADMIN_SERVICE}
+    volumes:
+      - postgres_data_admin:/var/lib/postgresql/data
+
 # 🛠️ Админка/модерация
   admin_service:
     build: ./services/admin_service
@@ -8,13 +23,15 @@ services:
     ports:
       - "8005:8000"
     restart: always
+    env_file:
+      - ./services/admin_service/.env
 
   # 🌐 Nginx как gateway
   gateway:
     image: nginx:alpine
     container_name: gateway
     volumes:
-      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./gateway/conf.d:/etc/nginx/conf.d
     ports:
       - "80:80"
     depends_on:
@@ -23,6 +40,8 @@ services:
 #      - order_service
 #      - payment_service
       - admin_service
+
+
 # 🔐 Сервис авторизации
 #  auth_service:
 #    build: ./services/auth_service
@@ -66,13 +85,15 @@ services:
 #    container_name: db
 #    restart: always
 #    ports:
-#      - "${POSTGRES_PORT}:5432"
+#      - "${POSTGRES_PORT_AUTH_SERVICE}:5432"
 #    environment:
-#      POSTGRES_USER: ${POSTGRES_USER}
-#      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-#      POSTGRES_DB: ${POSTGRES_DB}
+#      POSTGRES_USER: ${POSTGRES_USER_AUTH_SERVICE}
+#      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_AUTH_SERVICE}
+#      POSTGRES_DB: ${POSTGRES_DB_AUTH_SERVICE}
 #    volumes:
 #      - postgres_data:/var/lib/postgresql/data
 
 #volumes:
 #  postgres_data:
+volumes:
+  postgres_data_admin:
