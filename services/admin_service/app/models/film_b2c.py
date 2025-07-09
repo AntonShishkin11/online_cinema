@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ARRAY
 from sqlalchemy.sql import func
-from db.session import Base  # ✅ общий Base
+from app.db.session import Base  # ✅ общий Base
 
 class FilmB2C(Base):
     __tablename__ = "films_b2c"

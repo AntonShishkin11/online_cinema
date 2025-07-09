@@ -1,15 +1,15 @@
 import asyncio
-from logging.config import fileConfig
-from sqlalchemy.ext.asyncio import create_async_engine
-from alembic import context
 import os
 import sys
 
 # Добавляем путь к app, чтобы импорты работали
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'app'))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from logging.config import fileConfig
+from sqlalchemy.ext.asyncio import create_async_engine
+from alembic import context
 
-from db.session import Base, DATABASE_URL
-from models.film_b2c import FilmB2C  # ⬅️ импорт модели, чтобы Alembic её видел
+from app.db.session import Base, DATABASE_URL
+from app.models.film_b2c import FilmB2C  # ⬅️ импорт модели, чтобы Alembic её видел
 
 # Alembic Config
 config = context.config
