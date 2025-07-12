@@ -7,7 +7,7 @@ class FilmBase(BaseModel):
     title_original: Optional[str] = None
     short_description: Optional[str] = None
     full_description: Optional[str] = None
-    genres: Optional[List[str]] = None
+    genre_ids: Optional[List[int]] = Field(default_factory=list)
     country: Optional[str] = None
     year: Optional[int] = None
     duration: Optional[int] = None
