@@ -16,5 +16,6 @@ class Genre(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False)
+    tmdb_id = Column(Integer, unique=True, nullable=False)
 
     films = relationship("FilmB2C", secondary=film_genre_association, back_populates="genres")

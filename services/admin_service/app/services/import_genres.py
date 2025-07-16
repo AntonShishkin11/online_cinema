@@ -29,7 +29,7 @@ async def import_genres_from_tmdb(db: AsyncSession):
 
     for genre_data in genres:
         if genre_data["name"] not in existing_names:
-            genre = Genre(id=genre_data["id"], name=genre_data["name"])
+            genre = Genre(name=genre_data["name"], tmdb_id=genre_data["id"])
             db.add(genre)
 
     await db.commit()
