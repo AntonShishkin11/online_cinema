@@ -1,25 +1,59 @@
-version: '3.9'
+version: "3.8"
 
 services:
-  backend:
-    build: ./backend
-    volumes:
-      - ./backend:/app
+  auth_service:
+    build: ./services/auth_service
+    container_name: auth_service
     ports:
-      - "8000:8000"
+      - "8001:8000"
+    env_file:
+      - .env
+      - ./services/auth_service/.env
+    depends_on:
+      - db_auth
 
-  frontend:
-    image: node:18
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-      - ./frontend/dist:/output
-    command: sh -c "npm install && npm run build && cp -r dist/* /output"
+  admin_service:
+    build: ./services/admin_service
+    container_name: admin_service
+    ports:
+      - "8002:8000"
+    env_file:
+      - .env
+      - ./services/admin_service/.env
+    depends_on:
+      - db_admin
 
-  nginx:
-    image: nginx:alpine
-    volumes:
-      - ./frontend/dist:/usr/share/nginx/html
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+  gateway:
+    image: nginx:latest
+    container_name: gateway
     ports:
       - "80:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - auth_service
+      - admin_service
+
+  db_auth:
+    image: postgres:15
+    container_name: db_auth
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB_AUTH_SERVICE}
+      POSTGRES_USER: ${POSTGRES_USER_AUTH_SERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_AUTH_SERVICE}
+    ports:
+      - "${POSTGRES_PORT_AUTH_SERVICE}:5432"
+
+  db_admin:
+    image: postgres:15
+    container_name: db_admin
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB_ADMIN_SERVICE}
+      POSTGRES_USER: ${POSTGRES_USER_ADMIN_SERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_ADMIN_SERVICE}
+    ports:
+      - "${POSTGRES_PORT_ADMIN_SERVICE}:5432"
