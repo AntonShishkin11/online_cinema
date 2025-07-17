@@ -6,3 +6,4 @@ alembic
 psycopg2-binary
 dotenv
 httpx
+pydantic[email]
