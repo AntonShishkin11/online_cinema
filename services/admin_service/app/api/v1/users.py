@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
+from app.core.security import get_current_user_with_role
 from typing import Optional
 
 from app.schemas.user import UserBase, UserListResponse, UserUpdate
@@ -21,7 +22,11 @@ async def get_user(user_id: int):
     return await auth_client.get_user_by_id(user_id)
 
 @router.patch("/users/{user_id}", response_model=UserBase)
-async def patch_user(user_id: int, update: UserUpdate):
+async def patch_user(
+    user_id: int,
+    update: UserUpdate,
+    _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
+):
     if not update.dict(exclude_unset=True):
         raise HTTPException(status_code=400, detail="No fields to update")
     return await auth_client.update_user(user_id, update.dict(exclude_unset=True))

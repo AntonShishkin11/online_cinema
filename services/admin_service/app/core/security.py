@@ -1,19 +1,18 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from app.services.auth_client import get_user_info
+
 security = HTTPBearer()
 
-def decode_token(token: str):
-    if token == "admin_token":
-        return {"role": "admin"}
-    elif token == "moderator_token":
-        return {"role": "moderator"}
-    else:
-        return {"role": "user"}
-
-def get_current_user_admin_or_moderator(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = decode_token(token)
-    if user["role"] not in ("admin", "moderator"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    return user
+def get_current_user_with_role(required_roles: tuple[str, ...]):
+    async def _verify(credentials: HTTPAuthorizationCredentials = Depends(security)):
+        token = credentials.credentials
+        try:
+            user_data = await get_user_info(token)
+            if user_data["role"] not in required_roles:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+            return user_data
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный токен или ошибка при получении пользователя")
+    return _verify

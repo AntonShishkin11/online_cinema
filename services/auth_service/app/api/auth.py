@@ -16,9 +16,11 @@ from app.core.security import (
     create_password_reset_token, verify_password_reset_token
 )
 from app.services.email_service import send_verification_email
+from app.core.redis import set_refresh_token, get_refresh_token, delete_refresh_token
 
 router = APIRouter()
 security = HTTPBearer()
+
 
 @router.post("/register", response_model=UserRead)
 async def register(user: UserCreate, session: AsyncSession = Depends(get_db)):
@@ -38,6 +40,7 @@ async def register(user: UserCreate, session: AsyncSession = Depends(get_db)):
     await session.refresh(new_user)
     return new_user
 
+
 @router.post("/login")
 async def login(data: UserLogin, session: AsyncSession = Depends(get_db)):
     result = await session.execute(select(User).where(User.email == data.email))
@@ -49,12 +52,14 @@ async def login(data: UserLogin, session: AsyncSession = Depends(get_db)):
 
     access_token = create_access_token(user.email, user.role)
     refresh_token = create_refresh_token(user.email)
+    await set_refresh_token(user.email, refresh_token)
 
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer"
     }
+
 
 @router.get("/verify-email")
 async def verify_email(token: str, session: AsyncSession = Depends(get_db)):
@@ -74,20 +79,37 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_db)):
     await session.commit()
     return {"message": "Email successfully verified"}
 
-@router.post("/refresh")
-async def refresh_token(request: Request):
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing refresh token")
 
-    token = auth_header.split(" ")[1]
+@router.post("/refresh")
+async def refresh_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    session: AsyncSession = Depends(get_db)
+):
+    token = credentials.credentials
     try:
         email = verify_refresh_token(token)
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    new_access_token = create_access_token(email)
-    return {"access_token": new_access_token, "token_type": "bearer"}
+    stored = await get_refresh_token(email)
+    if stored != token:
+        raise HTTPException(status_code=401, detail="Refresh token mismatch")
+
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_access_token = create_access_token(email, user.role)
+    new_refresh_token = create_refresh_token(email)
+    await set_refresh_token(email, new_refresh_token)
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer"
+    }
+
 
 @router.get("/me")
 def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -102,6 +124,7 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
         "role": payload.get("role", "user")
     }
 
+
 @router.post("/request-password-reset")
 async def request_password_reset(email: str = Form(...), session: AsyncSession = Depends(get_db)):
     result = await session.execute(select(User).where(User.email == email))
@@ -112,6 +135,7 @@ async def request_password_reset(email: str = Form(...), session: AsyncSession =
     token = create_password_reset_token(email)
     await send_verification_email(email, token)
     return {"message": "Password reset email sent"}
+
 
 @router.post("/reset-password")
 async def reset_password(token: str = Form(...), new_password: str = Form(...), session: AsyncSession = Depends(get_db)):
@@ -128,3 +152,15 @@ async def reset_password(token: str = Form(...), new_password: str = Form(...), 
     user.password_hash = get_password_hash(new_password)
     await session.commit()
     return {"message": "Password has been reset successfully"}
+
+
+@router.post("/logout")
+async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        email = verify_refresh_token(token)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    await delete_refresh_token(email)
+    return {"message": "Logged out"}

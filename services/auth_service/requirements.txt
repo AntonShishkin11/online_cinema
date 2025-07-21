@@ -8,3 +8,4 @@ python-jose[cryptography]
 pydantic[email]
 aiosmtplib
 python-multipart
+redis[asyncio]

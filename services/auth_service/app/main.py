@@ -9,6 +9,7 @@ app.include_router(internal_users.router)
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 
+
 @app.on_event("startup")
 async def on_startup():
     async with engine.begin() as conn:

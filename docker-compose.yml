@@ -11,6 +11,7 @@ services:
       - ./services/auth_service/.env
     depends_on:
       - db_auth
+      - redis
 
   admin_service:
     build: ./services/admin_service
@@ -57,3 +58,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_ADMIN_SERVICE}
     ports:
       - "${POSTGRES_PORT_ADMIN_SERVICE}:5432"
+
+  # 🧠 Redis для хранения refresh токенов
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+volumes:
+  postgres_data:
