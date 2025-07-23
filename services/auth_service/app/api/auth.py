@@ -22,7 +22,8 @@ router = APIRouter()
 security = HTTPBearer()
 
 
-@router.post("/register", response_model=UserRead)
+@router.post("/register", response_model=UserRead, summary="Регистрация пользователя",
+             description="Создаёт нового пользователя и отправляет письмо с подтверждением почты.")
 async def register(user: UserCreate, session: AsyncSession = Depends(get_db)):
     token = create_email_verification_token(user.email)
     await send_verification_email(user.email, token)
@@ -41,7 +42,8 @@ async def register(user: UserCreate, session: AsyncSession = Depends(get_db)):
     return new_user
 
 
-@router.post("/login")
+@router.post("/login", summary="Аутентификация пользователя",
+             description="Позволяет пользователю войти по email и паролю. Возвращает access и refresh токены.")
 async def login(data: UserLogin, session: AsyncSession = Depends(get_db)):
     result = await session.execute(select(User).where(User.email == data.email))
     user = result.scalar()
@@ -61,7 +63,8 @@ async def login(data: UserLogin, session: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get("/verify-email")
+@router.get("/verify-email", summary="Подтверждение почты",
+            description="Подтверждает email по токену из письма. Активирует пользователя.")
 async def verify_email(token: str, session: AsyncSession = Depends(get_db)):
     try:
         email = verify_email_verification_token(token)
@@ -80,7 +83,8 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_db)):
     return {"message": "Email successfully verified"}
 
 
-@router.post("/refresh")
+@router.post("/refresh", summary="Обновление токенов",
+             description="Обновляет access и refresh токены при валидном refresh токене.")
 async def refresh_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     session: AsyncSession = Depends(get_db)
@@ -111,7 +115,8 @@ async def refresh_token(
     }
 
 
-@router.get("/me")
+@router.get("/me", summary="Информация о текущем пользователе",
+            description="Возвращает email и роль текущего пользователя по access токену.")
 def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
@@ -125,7 +130,8 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     }
 
 
-@router.post("/request-password-reset")
+@router.post("/request-password-reset", summary="Запрос на сброс пароля",
+             description="Отправляет письмо с ссылкой на сброс пароля пользователю.")
 async def request_password_reset(email: str = Form(...), session: AsyncSession = Depends(get_db)):
     result = await session.execute(select(User).where(User.email == email))
     user = result.scalar()
@@ -137,7 +143,8 @@ async def request_password_reset(email: str = Form(...), session: AsyncSession =
     return {"message": "Password reset email sent"}
 
 
-@router.post("/reset-password")
+@router.post("/reset-password", summary="Сброс пароля",
+             description="Сбрасывает пароль по токену из письма.")
 async def reset_password(token: str = Form(...), new_password: str = Form(...), session: AsyncSession = Depends(get_db)):
     try:
         email = verify_password_reset_token(token)
@@ -154,7 +161,8 @@ async def reset_password(token: str = Form(...), new_password: str = Form(...), 
     return {"message": "Password has been reset successfully"}
 
 
-@router.post("/logout")
+@router.post("/logout", summary="Выход из системы",
+             description="Удаляет refresh токен и завершает сессию пользователя.")
 async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:

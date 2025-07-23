@@ -10,7 +10,13 @@ from app.schemas.user import UserRead, UserUpdate, UserListResponse
 
 router = APIRouter(prefix="/internal/users", tags=["internal-users"])
 
-@router.get("", response_model=UserListResponse)
+
+@router.get(
+    "",
+    response_model=UserListResponse,
+    summary="Получить список пользователей",
+    description="Позволяет фильтровать по имени, email, ID, роли и статусу блокировки. Поддерживает пагинацию."
+)
 async def list_users(
     query: Optional[str] = None,
     role: Optional[str] = Query(None, pattern="^(user|moderator|admin)$"),
@@ -31,15 +37,19 @@ async def list_users(
     if is_blocked is not None:
         base_stmt = base_stmt.where(User.is_blocked == is_blocked)
 
-    # Получаем пользователей
     result = await db.execute(base_stmt.offset(offset).limit(limit))
     users = result.scalars().all()
-
     total = len(users)
 
     return UserListResponse(users=users, total=total)
 
-@router.get("/{user_id}", response_model=UserRead)
+
+@router.get(
+    "/{user_id}",
+    response_model=UserRead,
+    summary="Получить пользователя по ID",
+    description="Возвращает информацию о пользователе по его ID."
+)
 async def get_user(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -47,7 +57,13 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@router.patch("/{user_id}", response_model=UserRead)
+
+@router.patch(
+    "/{user_id}",
+    response_model=UserRead,
+    summary="Обновить пользователя по ID",
+    description="Позволяет изменить поля пользователя по его ID (например, роль, блокировку и др.)."
+)
 async def update_user(user_id: int, update: UserUpdate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
