@@ -15,7 +15,7 @@ from app.core.security import (
     verify_email_verification_token,
     create_password_reset_token, verify_password_reset_token
 )
-from app.services.email_service import send_verification_email
+from app.services.email_client import send_email_async
 from app.core.redis import set_refresh_token, get_refresh_token, delete_refresh_token
 
 router = APIRouter()
@@ -26,7 +26,13 @@ security = HTTPBearer()
              description="Создаёт нового пользователя и отправляет письмо с подтверждением почты.")
 async def register(user: UserCreate, session: AsyncSession = Depends(get_db)):
     token = create_email_verification_token(user.email)
-    await send_verification_email(user.email, token)
+    send_email_async(
+        user.email,
+        "Подтверждение почты",
+        "verify",
+        token
+    )
+
     result = await session.execute(select(User).where(User.email == user.email))
     if result.scalar():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -139,7 +145,12 @@ async def request_password_reset(email: str = Form(...), session: AsyncSession =
         raise HTTPException(status_code=404, detail="User not found")
 
     token = create_password_reset_token(email)
-    await send_verification_email(email, token)
+    send_email_async(
+        email,
+        "Сброс пароля",
+        "reset",
+        token
+    )
     return {"message": "Password reset email sent"}
 
 
@@ -168,7 +179,7 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         email = verify_refresh_token(token)
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
     await delete_refresh_token(email)
     return {"message": "Logged out"}

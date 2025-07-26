@@ -1,7 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-
 class FilmBase(BaseModel):
     title_localized: str
     title_original: Optional[str] = None
@@ -20,17 +19,15 @@ class FilmBase(BaseModel):
     is_available: Optional[bool] = True
     quality: Optional[str] = None
 
-
 class FilmCreate(FilmBase):
     pass
-
 
 class FilmUpdate(FilmBase):
     pass
 
-
 class FilmOut(FilmBase):
     id: int
+    is_deleted: bool
 
     class Config:
         orm_mode = True

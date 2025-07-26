@@ -23,6 +23,7 @@ class FilmB2C(Base):
     is_exclusive = Column(Boolean, default=False)
     is_available = Column(Boolean, default=True)
     quality = Column(String)
+    is_deleted = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

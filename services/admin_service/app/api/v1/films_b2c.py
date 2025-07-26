@@ -15,22 +15,15 @@ from app.db.session import get_db
 router = APIRouter()
 
 
-@router.get(
-    "/",
-    response_model=List[FilmOut],
-    summary="Список фильмов",
-    description="Получает список всех фильмов B2C с поддержкой пагинации.",
-)
+@router.get("/", response_model=List[FilmOut])
 async def get_films(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(FilmB2C).offset(skip).limit(limit))
+    result = await db.execute(
+        select(FilmB2C).where(FilmB2C.is_deleted == False).offset(skip).limit(limit)
+    )
     return result.scalars().all()
 
 
-@router.get(
-    "/fetch-tmdb",
-    summary="Поиск фильма по названию в TMDb",
-    description="Выполняет поиск фильма в TMDb по заданному названию. Возвращает список подходящих результатов.",
-)
+@router.get("/fetch-tmdb")
 async def fetch_tmdb_by_title(query: str):
     results = await search_tmdb_movie_by_name(query)
     if results.get("results"):
@@ -38,44 +31,62 @@ async def fetch_tmdb_by_title(query: str):
     raise HTTPException(status_code=404, detail="Фильм не найден в TMDb")
 
 
-@router.get(
-    "/{film_id}",
-    response_model=FilmOut,
-    summary="Получить фильм по ID",
-    description="Возвращает подробную информацию о фильме по его ID.",
-)
+@router.get("/{film_id}", response_model=FilmOut)
 async def get_film(film_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(FilmB2C).where(FilmB2C.id == film_id))
+    result = await db.execute(
+        select(FilmB2C).where(FilmB2C.id == film_id, FilmB2C.is_deleted == False)
+    )
     film = result.scalar_one_or_none()
     if film is None:
         raise HTTPException(status_code=404, detail="Film not found")
     return film
 
 
-@router.post(
-    "/",
-    response_model=FilmOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Создать фильм",
-    description="Создает новый фильм с привязкой жанров. Только для ролей admin и moderator.",
-)
+@router.post("/", response_model=FilmOut, status_code=status.HTTP_201_CREATED)
 async def create_film(
     film: FilmCreate,
     db: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
+    _: dict = Depends(get_current_user_with_role(("admin", "moderator"))),
 ):
     film_data = film.dict(exclude={"genre_ids"})
     genre_ids = film.genre_ids or []
 
-    genres = []
+    # Проверка на ранее удалённый фильм
+    stmt = select(FilmB2C).options(selectinload(FilmB2C.genres)).where(
+        FilmB2C.title_localized == film_data["title_localized"],
+        FilmB2C.year == film_data["year"],
+        FilmB2C.country == film_data["country"],
+        FilmB2C.is_deleted == True
+    )
+    result = await db.execute(stmt)
+    existing_deleted_film = result.scalar_one_or_none()
+
+    if existing_deleted_film:
+        # "Воскрешаем" фильм
+        for key, value in film_data.items():
+            setattr(existing_deleted_film, key, value)
+        existing_deleted_film.is_deleted = False
+
+        # Обновляем жанры
+        if genre_ids:
+            result = await db.execute(select(Genre).where(Genre.id.in_(genre_ids)))
+            genres = result.scalars().all()
+            if len(genres) != len(set(genre_ids)):
+                raise HTTPException(status_code=400, detail="Некоторые жанры не найдены")
+            existing_deleted_film.genres = genres
+
+        await db.commit()
+        await db.refresh(existing_deleted_film)
+        return existing_deleted_film
+
+    # Иначе создаём новый
+    new_film = FilmB2C(**film_data)
     if genre_ids:
         result = await db.execute(select(Genre).where(Genre.id.in_(genre_ids)))
         genres = result.scalars().all()
         if len(genres) != len(set(genre_ids)):
             raise HTTPException(status_code=400, detail="Некоторые жанры не найдены")
-
-    new_film = FilmB2C(**film_data)
-    new_film.genres = genres
+        new_film.genres = genres
 
     db.add(new_film)
     await db.commit()
@@ -83,12 +94,7 @@ async def create_film(
     return new_film
 
 
-@router.put(
-    "/{film_id}",
-    response_model=FilmOut,
-    summary="Обновить фильм",
-    description="Обновляет данные фильма, включая связанные жанры. Только для ролей admin и moderator.",
-)
+@router.put("/{film_id}", response_model=FilmOut)
 async def update_film(
     film_id: int,
     film_update: FilmUpdate,
@@ -97,7 +103,7 @@ async def update_film(
 ):
     result = await db.execute(
         select(FilmB2C)
-        .where(FilmB2C.id == film_id)
+        .where(FilmB2C.id == film_id, FilmB2C.is_deleted == False)
         .options(selectinload(FilmB2C.genres))
     )
     film = result.scalar_one_or_none()
@@ -121,31 +127,25 @@ async def update_film(
     return film
 
 
-@router.delete(
-    "/{film_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Удалить фильм",
-    description="Удаляет фильм по ID. Только для ролей admin и moderator.",
-)
+@router.delete("/{film_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_film(
     film_id: int,
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
 ):
-    result = await db.execute(select(FilmB2C).where(FilmB2C.id == film_id))
+    result = await db.execute(
+        select(FilmB2C).where(FilmB2C.id == film_id, FilmB2C.is_deleted == False)
+    )
     film = result.scalar_one_or_none()
     if film is None:
         raise HTTPException(status_code=404, detail="Film not found")
-    await db.delete(film)
+
+    film.is_deleted = True
     await db.commit()
     return None
 
 
-@router.post(
-    "/films/fetch_tmdb_data",
-    summary="Получить данные фильма по TMDb ID",
-    description="Возвращает данные о фильме по его TMDb ID. Только для ролей admin и moderator.",
-)
+@router.post("/films/fetch_tmdb_data")
 async def fetch_tmdb_data(
     tmdb_id: int,
     _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
@@ -157,11 +157,7 @@ async def fetch_tmdb_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post(
-    "/genres/import",
-    summary="Импорт жанров из TMDb",
-    description="Импортирует все доступные жанры из TMDb. Только для ролей admin и moderator.",
-)
+@router.post("/genres/import")
 async def import_genres(
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_user_with_role(("admin", "moderator")))

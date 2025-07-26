@@ -9,3 +9,5 @@ pydantic[email]
 aiosmtplib
 python-multipart
 redis[asyncio]
+
+celery[redis]==5.3.6
