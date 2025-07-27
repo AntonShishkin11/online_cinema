@@ -2,6 +2,7 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from app.core.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from fastapi import Header, HTTPException
 import os
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -58,3 +59,8 @@ def verify_password_reset_token(token: str) -> str:
         return payload.get("sub")
     except JWTError:
         raise ValueError("Invalid or expired token")
+
+async def verify_internal_secret(x_internal_secret: str = Header(...)):
+    expected_secret = os.getenv("INTERNAL_SECRET")
+    if not expected_secret or x_internal_secret != expected_secret:
+        raise HTTPException(status_code=403, detail="Forbidden: invalid internal token")

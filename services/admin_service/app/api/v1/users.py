@@ -12,14 +12,15 @@ router = APIRouter()
     "/users",
     response_model=UserListResponse,
     summary="Список пользователей",
-    description="Получает список пользователей с возможностью фильтрации по имени, роли и блокировке. Доступно без авторизации."
+    description="Получает список пользователей с возможностью фильтрации по имени, роли и блокировке. Только для админов и модераторов.",
 )
 async def list_users(
     query: Optional[str] = None,
     role: Optional[str] = Query(None, pattern="^(user|moderator|admin)$"),
     is_blocked: Optional[bool] = None,
     limit: int = 20,
-    offset: int = 0
+    offset: int = 0,
+    _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
 ):
     return await auth_client.get_users(query, role, is_blocked, limit, offset)
 
@@ -28,9 +29,12 @@ async def list_users(
     "/users/{user_id}",
     response_model=UserBase,
     summary="Получить пользователя по ID",
-    description="Возвращает информацию о пользователе по его ID. Доступно без авторизации."
+    description="Возвращает информацию о пользователе по его ID. Только для админов и модераторов.",
 )
-async def get_user(user_id: int):
+async def get_user(
+    user_id: int,
+    _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
+):
     return await auth_client.get_user_by_id(user_id)
 
 
@@ -38,7 +42,7 @@ async def get_user(user_id: int):
     "/users/{user_id}",
     response_model=UserBase,
     summary="Обновить пользователя",
-    description="Позволяет изменить данные пользователя (роль, блокировка). Только для ролей admin и moderator."
+    description="Позволяет изменить данные пользователя (роль, блокировка). Только для ролей admin и moderator.",
 )
 async def patch_user(
     user_id: int,
@@ -48,3 +52,4 @@ async def patch_user(
     if not update.dict(exclude_unset=True):
         raise HTTPException(status_code=400, detail="No fields to update")
     return await auth_client.update_user(user_id, update.dict(exclude_unset=True))
+

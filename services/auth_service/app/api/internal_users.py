@@ -7,8 +7,9 @@ from typing import Optional
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.user import UserRead, UserUpdate, UserListResponse
+from app.core.security import verify_internal_secret
 
-router = APIRouter(prefix="/internal/users", tags=["internal-users"])
+router = APIRouter(prefix="/internal/users", tags=["internal-users"],  dependencies=[Depends(verify_internal_secret)],)
 
 
 @router.get(
