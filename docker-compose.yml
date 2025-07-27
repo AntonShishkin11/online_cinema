@@ -24,6 +24,17 @@ services:
     depends_on:
       - db_admin
 
+  content_service:
+    build: ./services/content_service
+    container_name: content_service
+    ports:
+      - "8003:8000"
+    env_file:
+      - .env
+      - ./services/content_service/.env
+    depends_on:
+      - db_admin
+
   email_worker:
     build: ./services/email_service
     container_name: email_worker

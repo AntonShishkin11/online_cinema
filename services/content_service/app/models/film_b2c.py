@@ -1,8 +1,7 @@
+
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
 from app.db.session import Base
-from app.models.genre import film_genre_association
 
 class FilmB2C(Base):
     __tablename__ = "films_b2c"
@@ -27,5 +26,3 @@ class FilmB2C(Base):
     slug = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    genres = relationship("Genre", secondary=film_genre_association, back_populates="films")

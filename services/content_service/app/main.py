@@ -1,7 +1,7 @@
+
 from fastapi import FastAPI
+from app.api.v1 import movies
 
-app = FastAPI()
+app = FastAPI(title="Content Service")
 
-@app.get("/ping")
-def ping():
-    return {"message": "pong"}
+app.include_router(movies.router, prefix="/api/v1")

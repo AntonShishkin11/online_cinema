@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.future import select
 from typing import List
+from slugify import slugify
 
 from app.core.security import get_current_user_with_role
 from app.services.tmdb_service import fetch_tmdb_movie, search_tmdb_movie_by_name
@@ -16,7 +17,12 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[FilmOut])
-async def get_films(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
+async def get_films(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
+):
     result = await db.execute(
         select(FilmB2C).where(FilmB2C.is_deleted == False).offset(skip).limit(limit)
     )
@@ -24,7 +30,10 @@ async def get_films(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(
 
 
 @router.get("/fetch-tmdb")
-async def fetch_tmdb_by_title(query: str):
+async def fetch_tmdb_by_title(
+    query: str,
+    _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
+):
     results = await search_tmdb_movie_by_name(query)
     if results.get("results"):
         return results["results"]
@@ -32,7 +41,11 @@ async def fetch_tmdb_by_title(query: str):
 
 
 @router.get("/{film_id}", response_model=FilmOut)
-async def get_film(film_id: int, db: AsyncSession = Depends(get_db)):
+async def get_film(
+    film_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(get_current_user_with_role(("admin", "moderator")))
+):
     result = await db.execute(
         select(FilmB2C).where(FilmB2C.id == film_id, FilmB2C.is_deleted == False)
     )
@@ -49,6 +62,7 @@ async def create_film(
     _: dict = Depends(get_current_user_with_role(("admin", "moderator"))),
 ):
     film_data = film.dict(exclude={"genre_ids"})
+    film_data["slug"] = slugify(film_data["title_localized"])
     genre_ids = film.genre_ids or []
 
     # Проверка на ранее удалённый фильм
