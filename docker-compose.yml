@@ -12,6 +12,8 @@ services:
     depends_on:
       - db_auth
       - redis
+    networks:
+      - backend
 
   admin_service:
     build: ./services/admin_service
@@ -23,6 +25,8 @@ services:
       - ./services/admin_service/.env
     depends_on:
       - db_admin
+    networks:
+      - backend
 
   content_service:
     build: ./services/content_service
@@ -34,6 +38,8 @@ services:
       - ./services/content_service/.env
     depends_on:
       - db_admin
+    networks:
+      - backend
 
   file_service:
     build: ./services/file_service
@@ -45,6 +51,8 @@ services:
       - "8004:8000"
     depends_on:
       - gateway
+    networks:
+      - backend
 
   email_worker:
     build: ./services/email_service
@@ -54,6 +62,21 @@ services:
       - ./services/email_service/.env
     depends_on:
       - redis
+    networks:
+      - backend
+
+  subscription_service:
+    build: ./services/subscription_service
+    container_name: subscription_service
+    ports:
+      - "8005:8000"
+    env_file:
+      - .env
+      - ./services/subscription_service/.env
+    depends_on:
+      - db_admin
+    networks:
+      - backend
 
   gateway:
     image: nginx:latest
@@ -65,6 +88,9 @@ services:
     depends_on:
       - auth_service
       - admin_service
+      - subscription_service
+    networks:
+      - backend
 
   db_auth:
     image: postgres:15
@@ -77,6 +103,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_AUTH_SERVICE}
     ports:
       - "${POSTGRES_PORT_AUTH_SERVICE}:5432"
+    networks:
+      - backend
 
   db_admin:
     image: postgres:15
@@ -89,6 +117,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_ADMIN_SERVICE}
     ports:
       - "${POSTGRES_PORT_ADMIN_SERVICE}:5432"
+    networks:
+      - backend
 
   redis:
     image: redis:7
@@ -96,6 +126,12 @@ services:
     ports:
       - "6379:6379"
     restart: always
+    networks:
+      - backend
 
 volumes:
   postgres_data:
+
+networks:
+  backend:
+    driver: bridge

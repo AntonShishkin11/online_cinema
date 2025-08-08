@@ -1,5 +1,5 @@
-from fastapi import Request, APIRouter, Depends, HTTPException, status, Form
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from jose import jwt, JWTError
@@ -22,16 +22,10 @@ router = APIRouter()
 security = HTTPBearer()
 
 
-@router.post("/register", response_model=UserRead, summary="Регистрация пользователя",
-             description="Создаёт нового пользователя и отправляет письмо с подтверждением почты.")
+@router.post("/register", response_model=UserRead, summary="Регистрация пользователя")
 async def register(user: UserCreate, session: AsyncSession = Depends(get_db)):
     token = create_email_verification_token(user.email)
-    send_email_async(
-        user.email,
-        "Подтверждение почты",
-        "verify",
-        token
-    )
+    send_email_async(user.email, "Подтверждение почты", "verify", token)
 
     result = await session.execute(select(User).where(User.email == user.email))
     if result.scalar():
@@ -48,8 +42,7 @@ async def register(user: UserCreate, session: AsyncSession = Depends(get_db)):
     return new_user
 
 
-@router.post("/login", summary="Аутентификация пользователя",
-             description="Позволяет пользователю войти по email и паролю. Возвращает access и refresh токены.")
+@router.post("/login", summary="Аутентификация пользователя (JSON)")
 async def login(data: UserLogin, session: AsyncSession = Depends(get_db)):
     result = await session.execute(select(User).where(User.email == data.email))
     user = result.scalar()
@@ -58,19 +51,31 @@ async def login(data: UserLogin, session: AsyncSession = Depends(get_db)):
     if not user.is_verified:
         raise HTTPException(status_code=403, detail="Email not verified")
 
-    access_token = create_access_token(user.email, user.role)
-    refresh_token = create_refresh_token(user.email)
-    await set_refresh_token(user.email, refresh_token)
+    access_token = create_access_token(user.id, user.role)
+    refresh_token = create_refresh_token(user.id)
+    await set_refresh_token(str(user.id), refresh_token)
 
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer"
-    }
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
-@router.get("/verify-email", summary="Подтверждение почты",
-            description="Подтверждает email по токену из письма. Активирует пользователя.")
+@router.post("/token", summary="OAuth2 Password Token (form)")
+async def oauth2_token(form: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_db)):
+    # form.username — это email
+    result = await session.execute(select(User).where(User.email == form.username))
+    user = result.scalar()
+    if not user or not verify_password(form.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not user.is_verified:
+        raise HTTPException(status_code=403, detail="Email not verified")
+
+    access_token = create_access_token(user.id, user.role)
+    refresh_token = create_refresh_token(user.id)
+    await set_refresh_token(str(user.id), refresh_token)
+
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.get("/verify-email", summary="Подтверждение почты")
 async def verify_email(token: str, session: AsyncSession = Depends(get_db)):
     try:
         email = verify_email_verification_token(token)
@@ -89,40 +94,34 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_db)):
     return {"message": "Email successfully verified"}
 
 
-@router.post("/refresh", summary="Обновление токенов",
-             description="Обновляет access и refresh токены при валидном refresh токене.")
+@router.post("/refresh", summary="Обновление токенов")
 async def refresh_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     session: AsyncSession = Depends(get_db)
 ):
     token = credentials.credentials
     try:
-        email = verify_refresh_token(token)
+        user_id = verify_refresh_token(token)
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    stored = await get_refresh_token(email)
+    stored = await get_refresh_token(user_id)
     if stored != token:
         raise HTTPException(status_code=401, detail="Refresh token mismatch")
 
-    result = await session.execute(select(User).where(User.email == email))
+    result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    new_access_token = create_access_token(email, user.role)
-    new_refresh_token = create_refresh_token(email)
-    await set_refresh_token(email, new_refresh_token)
+    new_access_token = create_access_token(user.id, user.role)
+    new_refresh_token = create_refresh_token(user.id)
+    await set_refresh_token(str(user.id), new_refresh_token)
 
-    return {
-        "access_token": new_access_token,
-        "refresh_token": new_refresh_token,
-        "token_type": "bearer"
-    }
+    return {"access_token": new_access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
 
 
-@router.get("/me", summary="Информация о текущем пользователе",
-            description="Возвращает email и роль текущего пользователя по access токену.")
+@router.get("/me", summary="Информация о текущем пользователе")
 def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
@@ -130,14 +129,10 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    return {
-        "email": payload.get("sub"),
-        "role": payload.get("role", "user")
-    }
+    return {"user_id": payload.get("sub"), "role": payload.get("role", "user")}
 
 
-@router.post("/request-password-reset", summary="Запрос на сброс пароля",
-             description="Отправляет письмо с ссылкой на сброс пароля пользователю.")
+@router.post("/request-password-reset", summary="Запрос на сброс пароля")
 async def request_password_reset(email: str = Form(...), session: AsyncSession = Depends(get_db)):
     result = await session.execute(select(User).where(User.email == email))
     user = result.scalar()
@@ -145,17 +140,11 @@ async def request_password_reset(email: str = Form(...), session: AsyncSession =
         raise HTTPException(status_code=404, detail="User not found")
 
     token = create_password_reset_token(email)
-    send_email_async(
-        email,
-        "Сброс пароля",
-        "reset",
-        token
-    )
+    send_email_async(email, "Сброс пароля", "reset", token)
     return {"message": "Password reset email sent"}
 
 
-@router.post("/reset-password", summary="Сброс пароля",
-             description="Сбрасывает пароль по токену из письма.")
+@router.post("/reset-password", summary="Сброс пароля")
 async def reset_password(token: str = Form(...), new_password: str = Form(...), session: AsyncSession = Depends(get_db)):
     try:
         email = verify_password_reset_token(token)
@@ -172,14 +161,13 @@ async def reset_password(token: str = Form(...), new_password: str = Form(...), 
     return {"message": "Password has been reset successfully"}
 
 
-@router.post("/logout", summary="Выход из системы",
-             description="Удаляет refresh токен и завершает сессию пользователя.")
+@router.post("/logout", summary="Выход из системы")
 async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
-        email = verify_refresh_token(token)
+        user_id = verify_refresh_token(token)
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    await delete_refresh_token(email)
+    await delete_refresh_token(user_id)
     return {"message": "Logged out"}

@@ -8,3 +8,4 @@ dotenv
 httpx
 pydantic[email]
 python-slugify
+python-jose
